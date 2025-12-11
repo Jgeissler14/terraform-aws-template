@@ -51,7 +51,6 @@ jobs:
           
       - name: Initialise project and view terraform plan
         run: |
-          cd terraform 
           tofu init 
           tofu plan -var-file=./${{ env.VAR_FILE_PATH }}
 
