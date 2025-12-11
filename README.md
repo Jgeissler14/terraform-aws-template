@@ -4,17 +4,6 @@ This repository provides a starting point for new Terraform projects, structured
 
 ⚠️ **All commands are run using [OpenTofu](https://opentofu.org/), not Terraform.** 
 
-## Directory Structure
-
--   `environments/`: Contains the configuration for each environment.
-    -   `dev/`: Configuration for the Development environment.
-    -   `prod/`: Configuration for the Production environment.
--   `environments/`: Contains the configuration for each environment.
-    -   `dev/`: Configuration for the Development environment.
-    -   `prod/`: Configuration for the Production environment.
--   `.gitignore`: Standard Terraform ignores.
--   `README.md`: This file.
-
 ## Naming and Tagging with Cloud Posse's `label` module
 
 This repository uses modules from [Cloud Posse](https://cloudposse.com/), which internally use the [`cloudposse/label/null`](https://registry.terraform.io/modules/cloudposse/label/null/latest) module to ensure consistent naming and tagging for all resources.
