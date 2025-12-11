@@ -67,6 +67,7 @@ jobs:
 
     env:
       VAR_FILE_PATH: 'tfvars/${{ github.event.inputs.environment }}.tfvars'
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
     steps:
       - uses: actions/checkout@v3
@@ -100,6 +101,7 @@ jobs:
 
     env:
       VAR_FILE_PATH: 'tfvars/${{ github.event.inputs.environment }}.tfvars'
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
     steps:
       - uses: actions/checkout@v3
