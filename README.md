@@ -2,6 +2,8 @@
 
 This repository provides a starting point for new Terraform projects, structured to support multiple environments like `dev` and `prod`.
 
+⚠️ **All commands are run using [OpenTofu](https://opentofu.org/), not Terraform.** 
+
 ## Directory Structure
 
 -   `environments/`: Contains the configuration for each environment.
@@ -15,13 +17,11 @@ This repository provides a starting point for new Terraform projects, structured
 
 ## Naming and Tagging with Cloud Posse's `label` module
 
-All naming and tagging conventions are based on the standards defined in the main [AWS Environment Separation and Governance SOP](./aws_dev_prod_sop.md).
-
 This repository uses modules from [Cloud Posse](https://cloudposse.com/), which internally use the [`cloudposse/label/null`](https://registry.terraform.io/modules/cloudposse/label/null/latest) module to ensure consistent naming and tagging for all resources.
 
 ### How it Works
 
-The `label` module is a powerful utility that centralizes resource naming logic. Instead of manually creating resource names and tag maps, you provide it with standardized inputs, and it generates the final name and tags as outputs.
+The `label` module is a utility that centralizes resource naming logic. Instead of manually creating resource names and tag maps, you provide it with standardized inputs, and it generates the final name and tags as outputs.
 
 -   **Inputs**: You provide context components like `namespace`, `tenant`, `stage`, `name`, and `attributes`.
 -   **Outputs**:
@@ -60,8 +60,8 @@ It also applies a standard set of tags to all resources as defined in the AWS SO
 
 3.  **Apply the changes:**
     This will create the resources in your AWS account.
-    > [!NOTE]
-    > ⚠️ **Applies should not be done locally.** Use the GitHub Actions workflow to apply changes to any environment.
+
+    ⚠️ **Applies should not be done locally.** Use the GitHub Actions workflow to apply changes to any environment.
 
     ```sh
     terraform apply -var-file='./tfvars/dev.tfvars'
