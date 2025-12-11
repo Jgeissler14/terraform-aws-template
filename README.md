@@ -45,27 +45,26 @@ It also applies a standard set of tags to all resources as defined in the AWS SO
 
 ## How to Use
 
-1.  **Navigate to an environment directory:**
-    ```sh
-    cd environments/dev
-    ```
-
-2.  **Initialize Terraform:**
+1.  **Initialize Terraform:**
     This will download the necessary providers and modules.
     ```sh
     terraform init
     ```
 
-3.  **Review the plan:**
+2.  **Review the plan:**
     This will show you what resources Terraform will create.
     ```sh
-    terraform plan
+    terraform plan -var-file='./tfvars/dev.tfvars'
+
     ```
 
-4.  **Apply the changes:**
+3.  **Apply the changes:**
     This will create the resources in your AWS account.
+    > [!NOTE]
+    > ⚠️ **Applies should not be done locally.** Use the GitHub Actions workflow to apply changes to any environment.
+
     ```sh
-    terraform apply
+    terraform apply -var-file='./tfvars/dev.tfvars'
     ```
 
 To deploy to the production environment, you would navigate to `environments/prod` and run the same commands.

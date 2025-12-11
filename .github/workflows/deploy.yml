@@ -1,0 +1,124 @@
+name: Terraform Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        type: choice
+        required: true
+        options:
+          - plan
+          - apply
+          - destroy
+        default: 'plan'
+      environment:
+        description: 'Environment to run workflow against'
+        type: choice
+        required: true
+        options:
+        - dev
+        - prod
+        default: 'dev'
+  pull_request:
+    branches: [main]
+    paths: ["terraform/**"]
+
+jobs:
+  plan:
+    name: "Terraform Plan (${{ github.event.inputs.environment || 'dev' }})"
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+    env:
+      # For PRs, default to 'dev'. For manual triggers, use the selected environment.
+      VAR_FILE_PATH: "tfvars/${{ github.event.inputs.environment || 'dev' }}.tfvars"
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Use Node.js 14.x
+        uses: actions/setup-node@v1
+        with:
+          node-version: 14.x
+      - uses: opentofu/setup-opentofu@v1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID}}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Initialise project and view terraform plan
+        run: |
+          cd terraform 
+          tofu init 
+          tofu plan -var-file=./${{ env.VAR_FILE_PATH }}
+
+  apply:
+    name: 'Terraform Apply (${{ github.event.inputs.environment }})'
+    needs: plan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+    
+    # This requires setting up environments in repository settings.
+    # For a manual approval step, configure the environment to require reviewers.
+    environment:
+      name: ${{ github.event.inputs.environment }}
+
+    env:
+      VAR_FILE_PATH: 'tfvars/${{ github.event.inputs.environment }}.tfvars'
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Use Node.js 14.x
+        uses: actions/setup-node@v1
+        with:
+          node-version: 14.x
+      - uses: opentofu/setup-opentofu@v1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Initialise project and deploy terraform
+        run: |
+          cd terraform
+          tofu init
+          tofu apply -var-file=./${{ env.VAR_FILE_PATH }} --auto-approve=true
+
+  destroy:
+    name: 'Terraform Destroy (${{ github.event.inputs.environment }})'
+    needs: plan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    
+    # This requires setting up environments in repository settings.
+    # For a manual approval step, configure the environment to require reviewers.
+    environment:
+      name: ${{ github.event.inputs.environment }}
+
+    env:
+      VAR_FILE_PATH: 'tfvars/${{ github.event.inputs.environment }}.tfvars'
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Use Node.js 14.x
+        uses: actions/setup-node@v1
+        with:
+          node-version: 14.x
+      - uses: opentofu/setup-opentofu@v1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Initialise project and destroy terraform
+        run: |
+          cd terraform
+          tofu init
+          tofu destroy -var-file=./${{ env.VAR_FILE_PATH }} --auto-approve=true
