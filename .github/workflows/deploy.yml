@@ -84,7 +84,6 @@ jobs:
           
       - name: Initialise project and deploy terraform
         run: |
-          cd terraform
           tofu init
           tofu apply -var-file=./${{ env.VAR_FILE_PATH }} --auto-approve=true
 
@@ -118,6 +117,5 @@ jobs:
           
       - name: Initialise project and destroy terraform
         run: |
-          cd terraform
           tofu init
           tofu destroy -var-file=./${{ env.VAR_FILE_PATH }} --auto-approve=true
