@@ -1,0 +1,63 @@
+name: ci
+
+# On every PR: format, validate, and a read-only plan against sandbox state.
+# The plan runs under the sandbox-plan environment, which holds the read-only
+# role, so a PR can never apply or destroy anything.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # mint the OIDC token to assume the AWS role
+  contents: read
+
+env:
+  TF_VERSION: '1.9.8'
+  AWS_REGION: us-east-1
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: sandbox-plan
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive terraform
+
+      - name: Configure AWS credentials (read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init (sandbox backend)
+        working-directory: terraform
+        run: terraform init -backend-config=backends/sandbox.hcl -input=false
+
+      - name: terraform validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: terraform plan (sandbox)
+        working-directory: terraform
+        run: |
+          set -o pipefail
+          terraform plan -var-file=envs/sandbox.tfvars -input=false -no-color | tee plan.txt
+
+      - name: Render plan to summary
+        if: always()
+        working-directory: terraform
+        run: |
+          {
+            echo "## Plan (sandbox)"
+            echo '```'
+            tail -c 60000 plan.txt 2>/dev/null || echo "(no plan output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,104 @@
+name: apply-tag
+
+# Pushing a v*.*.* tag promotes to prod. Two jobs:
+#   plan   runs under prod-plan (read-only role) and renders the plan to the
+#          summary so it is visible before anyone approves.
+#   apply  runs under prod (deploy role), but the prod environment requires a
+#          reviewer, so this job waits for a human to approve in the Actions UI.
+#
+# Tagging makes promotion explicit. Nothing reaches prod just by merging.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v*.*.* tag to (re)apply"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: apply-prod
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: '1.9.8'
+  AWS_REGION: us-east-1
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: prod-plan
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # - name: Configure AWS credentials (read-only)
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+      #     aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init (prod backend)
+        working-directory: terraform
+        run: terraform init -backend-config=backends/prod.hcl -input=false
+
+      - name: terraform plan (prod)
+        working-directory: terraform
+        run: |
+          set -o pipefail
+          terraform plan -var-file=envs/prod.tfvars -input=false -no-color | tee plan.txt
+
+      - name: Render plan to summary
+        if: always()
+        working-directory: terraform
+        run: |
+          {
+            echo "## Prod plan (${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }})"
+            echo '```'
+            tail -c 60000 plan.txt 2>/dev/null || echo "(no plan output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  apply:
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: prod   # required reviewer gate lives here
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials (prod deploy)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init (prod backend)
+        working-directory: terraform
+        run: terraform init -backend-config=backends/prod.hcl -input=false
+
+      - name: terraform apply (prod)
+        working-directory: terraform
+        run: |
+          terraform plan -var-file=envs/prod.tfvars -input=false -out=tfplan
+          terraform apply -input=false tfplan
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "Applied tag ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }} to prod" >> "$GITHUB_STEP_SUMMARY"
