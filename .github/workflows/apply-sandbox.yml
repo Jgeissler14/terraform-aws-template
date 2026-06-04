@@ -1,0 +1,52 @@
+name: apply-sandbox
+
+# Every merge to main applies to sandbox automatically. No approval: the PR
+# plan in ci.yml was the gate, and sandbox is the throwaway environment.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: apply-sandbox
+  cancel-in-progress: false   # never interrupt an in-flight apply
+
+env:
+  TF_VERSION: '1.9.8'
+  AWS_REGION: us-east-1
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: sandbox
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # - name: Configure AWS credentials (sandbox deploy)
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+      #     aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init (sandbox backend)
+        working-directory: terraform
+        run: terraform init -backend-config=backends/sandbox.hcl -input=false
+
+      - name: terraform apply (sandbox)
+        working-directory: terraform
+        run: |
+          terraform plan -var-file=envs/sandbox.tfvars -input=false -out=tfplan
+          terraform apply -input=false tfplan
+
+      - name: Summary
+        if: always()
+        run: echo "Applied ${GITHUB_SHA} to sandbox" >> "$GITHUB_STEP_SUMMARY"

@@ -1,19 +1,23 @@
-# Local .terraform directories
-**/.terraform/*
+# Backend config is local-only (no secrets), so it's committed. If you switch
+# to S3 with account-specific names, ignore the real files and keep *.example:
+#   **/backends/*.hcl
+#   !**/backends/*.hcl.example
 
-# .tfstate files
+# Local state lives under ./state/ — never commit state.
+state/
 *.tfstate
 *.tfstate.*
-**.terraform**
-
-# Crash log files
+.terraform/
+.terraform.lock.hcl
 crash.log
 
-# Ignore override files as they are usually used for local testing
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
+# Plans
+tfplan
+*.tfplan
+plan.txt
 
-# In-house provider builds
-.terraform/providers/
+# Real tfvars with secrets, if you ever add any. The env tfvars here are
+# safe placeholders and ARE committed; uncomment if that changes.
+# **/envs/*.tfvars
+
+.DS_Store

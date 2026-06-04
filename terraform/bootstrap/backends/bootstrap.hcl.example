@@ -1,0 +1,2 @@
+# Local backend example. The real bootstrap.hcl is committed alongside this.
+path = "../../state/bootstrap.tfstate"

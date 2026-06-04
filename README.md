@@ -1,97 +1,102 @@
-# Baseline Terraform Repository
+# Terraform AWS Template
 
-This repository provides a starting point for new Terraform projects, structured to support multiple environments like `dev` and `prod`.
+A starting point for a real AWS Terraform repo. It ships a clean multi
+environment layout, OIDC based GitHub Actions (no long lived AWS keys), and a
+promotion model where sandbox auto applies on merge and prod ships on a version
+tag behind an approval gate.
 
-⚠️ **All commands are run using [OpenTofu](https://opentofu.org/), not Terraform.** 
+The example "workload" is a `null_resource`, so the whole thing applies in any
+account, costs nothing, and lets you see the pipeline work end to end before you
+drop in real infrastructure.
 
-## Naming and Tagging with Cloud Posse's `label` module
+## How deployment works
 
-This repository uses modules from [Cloud Posse](https://cloudposse.com/), which internally use the [`cloudposse/label/null`](https://registry.terraform.io/modules/cloudposse/label/null/latest) module to ensure consistent naming and tagging for all resources.
+Three triggers, three behaviors:
 
-### How it Works
+1. **Open a PR.** `ci.yml` runs fmt, validate, and a read only `terraform plan`
+   against sandbox state. It uses a read only IAM role, so a PR physically
+   cannot apply or destroy anything. The plan is posted to the run summary.
+2. **Merge to main.** `apply-sandbox.yml` applies to the sandbox environment
+   automatically. The PR plan was the gate.
+3. **Push a `v*.*.*` tag.** `apply-tag.yml` plans prod (read only), then waits
+   for a reviewer to approve before it applies with the deploy role. Nothing
+   reaches prod just by merging. Promotion is an explicit tag.
 
-The `label` module is a utility that centralizes resource naming logic. Instead of manually creating resource names and tag maps, you provide it with standardized inputs, and it generates the final name and tags as outputs.
+The security model is the plan and apply split. PR jobs assume a read only
+role; only the post merge and post tag jobs can assume the deploy role, and the
+OIDC trust policy binds each role to specific GitHub Environments so a PR cannot
+borrow the deploy role.
 
--   **Inputs**: You provide context components like `namespace`, `tenant`, `stage`, `name`, and `attributes`.
--   **Outputs**:
-    -   `id`: A formatted string used for resource names, following the pattern `namespace-tenant-stage-name-attributes`. For example: `eg-internal-dev-storage`.
-    -   `tags`: A map of tags that includes the input components as well as any additional custom tags you provide.
+## Layout
 
-### How We Use It
+```
+.
+├── Makefile                     # init / plan / apply, ENV selects the env
+├── scripts/
+│   └── bootstrap-state-backend.sh   # optional: only if you switch to S3 state
+├── terraform/
+│   ├── versions.tf              # providers + local backend (per-env state file)
+│   ├── variables.tf
+│   ├── main.tf                  # the null_resource example workload
+│   ├── outputs.tf
+│   ├── backends/                # per env local state path (committed)
+│   │   ├── sandbox.hcl
+│   │   └── prod.hcl
+│   ├── envs/                    # per env variables
+│   │   ├── sandbox.tfvars
+│   │   └── prod.tfvars
+│   └── bootstrap/               # one time stack: OIDC provider, roles, GH envs
+│       ├── main.tf
+│       ├── variables.tf
+│       ├── versions.tf
+│       ├── backends/bootstrap.hcl.example
+│       └── README.md
+└── .github/workflows/
+    ├── ci.yml                   # PR: fmt + validate + read only plan
+    ├── apply-sandbox.yml        # merge to main: apply sandbox
+    └── apply-tag.yml            # v*.*.* tag: plan + gated apply to prod
+```
 
-1.  **Indirectly (via other Cloud Posse modules)**: The `cloudposse/s3-bucket/aws` module we use for our storage bucket handles this for us. We provide the `namespace`, `stage`, etc., directly to the S3 module, and it passes them to its own internal `label` module. This is the most common and convenient way to use it.
+The backend is local. `versions.tf` has a `backend "local" {}` block and each
+env passes its own state path at init time with `-backend-config=backends/<env>.hcl`
+(for example `path = "../state/sandbox.tfstate"`). State lives under `./state/`,
+which is gitignored. Local state needs zero AWS setup, which makes the repo easy
+to clone and run. For a real team you'd switch to `backend "s3" {}` so state is
+shared and locked; the bootstrap stack and the `bootstrap-state-backend.sh`
+script are still here for exactly that.
 
-2.  **Directly (for standalone resources)**: When creating a resource that doesn't have a high-level Cloud Posse module (like a simple `aws_sns_topic`), we can use the `label` module directly in our environment configuration. You can see an example of this in `environments/dev/main.tf` and `environments/prod/main.tf`.
+## First time setup
 
-This approach guarantees that every single resource, whether from a high-level module or created as a standalone resource, follows the exact same naming and tagging convention defined in the SOP.
+With local state there's nothing to provision. Just init and go:
 
-It also applies a standard set of tags to all resources as defined in the AWS SOP, including:
-- `Billback`
-- `Billable`
-- `client`
-- `DataClassification`
-- `ComplianceRequirement`
+```bash
+make init  ENV=sandbox
+make plan  ENV=sandbox
+make apply ENV=sandbox
+```
 
-## How to Use
+The OIDC bootstrap stack (`terraform/bootstrap/`) is optional now. You only need
+it when you wire up GitHub Actions to deploy, since CI needs roles to assume and,
+in a real team, remote (S3) state to share across runs.
 
-1.  **Initialize Terraform:**
-    This will download the necessary providers and modules.
-    ```sh
-    terraform init
-    ```
+## Day to day
 
-2.  **Review the plan:**
-    This will show you what resources Terraform will create.
-    ```sh
-    terraform plan -var-file='./tfvars/dev.tfvars'
+```bash
+make init  ENV=sandbox     # writes state to ./state/sandbox.tfstate
+make plan  ENV=sandbox
+make apply ENV=sandbox
+```
 
-    ```
+To ship to prod, tag a release:
 
-3.  **Apply the changes:**
-    This will create the resources in your AWS account.
+```bash
+git tag v1.0.0
+git push origin v1.0.0     # opens the gated prod apply in GitHub Actions
+```
 
-    ⚠️ **Applies should not be done locally.** Use the GitHub Actions workflow to apply changes to any environment.
+## Making it real
 
-    ```sh
-    terraform apply -var-file='./tfvars/dev.tfvars'
-    ```
-
-To deploy to the production environment, you would navigate to `environments/prod` and run the same commands.
-
-## GitHub Actions Workflow
-
-This repository is configured with a GitHub Actions workflow to automate `plan`, `apply`, and `destroy` operations for each environment.
-
-### How it Works
-
-The workflow is triggered manually via the `workflow_dispatch` event. You can run the workflow from the "Actions" tab in the GitHub repository.
-
-When you trigger the workflow, you will be prompted to select:
-1.  **Action**: The Terraform action to perform (`plan`, `apply`, or `destroy`).
-2.  **Environment**: The target environment (`dev` or `prod`).
-
-The workflow uses GitHub Environments to protect `prod`. The `prod` environment may require manual approval before the `apply` or `destroy` jobs can run.
-
-### Workflow Steps
-
-1.  **Plan**: This job always runs. It generates a Terraform plan for the selected environment. This allows you to review the proposed changes before applying or destroying.
-2.  **Apply**: This job runs only when you select the `apply` action. It applies the Terraform configuration to the selected environment. It requires the `plan` job to complete successfully.
-3.  **Destroy**: This job runs only when you select the `destroy` action. It destroys all resources managed by the Terraform configuration in the selected environment. It requires the `plan` job to complete successfully.
-
-### How to Use
-
-1.  Go to the **Actions** tab of the repository.
-2.  Select the **Example Service Release** workflow in the left sidebar.
-3.  Click the **Run workflow** dropdown on the right.
-4.  Choose the desired **Action** (`plan`, `apply`, or `destroy`).
-5.  Choose the **Environment** (`dev` or `prod`).
-6.  Click the **Run workflow** button.
-
-
-## AWS SSO and CLI Sessions with Leapp
-
-[Leapp](https://www.leapp.cloud/) is a cross-platform desktop application for managing access to cloud providers. It is particularly useful for handling temporary AWS credentials when using AWS Single Sign-On (SSO).
-
-Instead of manually logging in via the AWS CLI and exporting credentials, Leapp provides a GUI to manage and generate temporary sessions for your terminal.
-
--   **Setup Guide**: [Configuring AWS Single Sign-On Integration with Leapp](https://docs.leapp.cloud/latest/configuring-integration/configure-aws-single-sign-on-integration/)
+Replace the `null_resource` in `terraform/main.tf` with actual modules (VPC,
+ECS, S3, and so on). Everything else stays: the env files, the backends, the
+roles, and the three workflows already give you a safe path from PR to sandbox
+to a tagged, approved prod release.
