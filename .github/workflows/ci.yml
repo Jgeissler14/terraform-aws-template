@@ -31,11 +31,11 @@ jobs:
       - name: terraform fmt
         run: terraform fmt -check -recursive terraform
 
-      - name: Configure AWS credentials (read-only)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+      # - name: Configure AWS credentials (read-only)
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+      #     aws-region: ${{ env.AWS_REGION }}
 
       - name: terraform init (sandbox backend)
         working-directory: terraform
